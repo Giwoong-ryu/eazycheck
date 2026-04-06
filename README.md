@@ -1,126 +1,121 @@
 # EazyCheck
 
-코드를 만들기 전에 과거 실수를 경고하고, 만든 후에 미래 문제를 시뮬레이션합니다.
-CLAUDE.md 파일 하나로 설치 — 별도 명령어 없이 자동 작동합니다.
+AI 코딩 도구가 반복하는 실수를 자동으로 막아줍니다.
 
----
-
-## 작동 방식
-
-```
-[코드 작성 전]                      [코드 작성 후]
-GATE: 과거 실수 패턴 경고      ->   sim: 자동 시뮬레이션으로 잠재 문제 선제 탐지
-토론: 설계 충돌 사전 검토      ->   Check: pre-commit / CI / E2E 자동 검증
-```
-
-3개 이상 파일을 건드릴 때만 토론과 sim이 작동합니다. 1-2개 파일은 바로 코드로 넘어갑니다.
-불필요한 토큰 낭비 없이 필요한 순간에만 개입합니다.
+hooks로 동작해서 토큰을 쓰지 않습니다.
 
 ---
 
 ## 설치
 
-`~/.claude/` 폴더에 파일을 복사합니다:
+Python 3.8 이상 필요.
 
 ```bash
 git clone https://github.com/Giwoong-ryu/eazycheck.git
+cd eazycheck
 
-cp eazycheck/CLAUDE.md ~/.claude/CLAUDE.md
-cp -r eazycheck/rules/ ~/.claude/rules/
-cp -r eazycheck/skills/ ~/.claude/skills/
-cp -r eazycheck/agents/ ~/.claude/agents/
-cp -r eazycheck/state/ ~/.claude/state/
+# Mac/Linux
+bash install.sh
+
+# Windows PowerShell
+.\install.ps1
 ```
 
-> 기존 CLAUDE.md가 있다면, EazyCheck 내용을 기존 파일 끝에 붙여넣으세요.
+git이 없으면 [ZIP 다운로드](https://github.com/Giwoong-ryu/eazycheck/archive/refs/heads/main.zip).
+
+설치 후 Claude Code 재시작하면 끝.
 
 ---
 
-## 기능
+## 뭘 해주나
 
-### GATE - 같은 실수 두 번 하지 않기
-코드 작성 전 `patterns.json`을 열어 과거에 발생한 실수와 대조합니다.
-관련 패턴이 있으면 코드 생성 전에 경고를 출력합니다.
+### API 키 하드코딩 차단
 
-### 토론 - 코드 짜기 전에 설계 충돌 잡기
-3개 이상 파일을 변경할 때, architect와 code-reviewer가 병렬로 설계를 검토합니다.
-코드를 다 짜고 나서 뒤집는 대신, 시작 전에 이런 케이스를 미리 걸러냅니다.
-- 변경 하나가 다른 파일을 조용히 망가뜨리는 경우
-- 지금은 작동하지만 기능이 2-3개 더 붙으면 전부 다시 짜야 하는 구조
-- 빠른 것 같아 보이지만 나중에 병목이 될 설계
+코드에 API 키를 쓰면 저장 자체를 막습니다.
 
-### sim - 완성된 코드로 미래 시뮬레이션
-코드 작성 직후 자동 실행됩니다. 실제 코드를 읽고 시간축 시나리오를 돌려
-"지금은 괜찮지만 나중에 문제가 될" 부분을 미리 잡아냅니다.
-`/sim` 명령으로 언제든 수동 실행도 가능합니다.
+```python
+api_key = "sk-abc123..."   # 차단됨
+api_key = os.getenv("KEY")  # 통과
+```
 
-### Check - 도구로 기술적 결함 검출
-pre-commit, CI, E2E 테스트를 순서대로 실행합니다.
-API 키 노출, import 누락, 하드코딩 패턴을 자동으로 잡아냅니다.
+Google, OpenAI, GitHub, AWS 키 패턴을 감지합니다.
+
+### 반복 실수 경고
+
+AI가 자주 하는 실수 패턴을 `patterns.json`에 쌓아두고, 비슷한 작업을 할 때 미리 경고합니다.
+
+- 파일 안 읽고 수정하려 할 때
+- 구버전 AI 모델명 쓰려 할 때
+- TypeScript 타입 바꿀 때 사용처 누락
+
+기본 22개 패턴 포함. 쓸수록 늘어납니다.
+
+### /sim
+
+코드 완성 후 `/sim` 입력하면 "3개월 후 + 10배 규모"에서 터질 곳을 찾아줍니다. 이건 토큰을 씁니다.
 
 ---
 
-## 쓸수록 똑똑해집니다
+## 구조
 
-버그를 해결할 때마다 Claude가 `state/patterns.json`에 패턴을 자동으로 기록합니다.
-다음 세션부터 같은 실수가 반복되기 전에 경고합니다.
+설치하면 `~/.claude/`에 이렇게 들어갑니다:
 
-기본 패턴 8개 포함 (API 키 노출, 확장자 하드코딩, import 누락 등)
+```
+hooks/
+  eazycheck-gate.py        ← Write/Edit 할 때마다 실행. API 키 차단 + 실수 경고
+  eazycheck-smart-gate.py  ← 메시지 보낼 때마다 실행. 관련 패턴 경고
 
-### 패턴 관리
+skills/sim/SKILL.md        ← /sim 명령어
 
-`state/patterns.json`을 직접 열어 확인하고 편집할 수 있습니다.
+state/patterns.json        ← 실수 패턴 DB
+```
+
+`settings.json`의 `PreToolUse`와 `UserPromptSubmit` hook으로 등록됩니다. 설치 스크립트가 자동으로 해줍니다.
+
+---
+
+## 토큰
+
+| 기능 | 토큰 |
+|------|------|
+| API 키 차단 | 0 (Python) |
+| 실수 경고 | 0 (Python) |
+| 패턴 매칭 경고 | ~50 (매칭 시만) |
+| /sim | ~500 (수동 호출) |
+
+---
+
+## 패턴 추가
+
+버그 고치면 AI한테 "패턴에 추가해"라고 하거나 직접 편집:
 
 ```json
 {
-  "solved": [
-    {
-      "id": "api-key-leak",
-      "symptom": "API 키가 코드에 노출됨",
-      "cause": "파일에 API 키 하드코딩 후 git push",
-      "solution": "환경변수(os.getenv) 사용. 노출된 키 즉시 교체",
-      "frequency": "high"
-    }
-  ]
+  "id": "짧은-영문-id",
+  "symptom": "증상",
+  "cause": "원인",
+  "solution": "해결법",
+  "frequency": "medium"
 }
 ```
 
-- **추가**: Claude가 버그 해결 시 자동 추가. 직접 추가도 가능.
-- **수정**: 잘못된 내용은 파일을 직접 편집.
-- **삭제**: 더 이상 해당 없는 패턴은 항목 자체를 제거.
-- **frequency**: `medium` / `high` / `critical` — 높을수록 경고가 더 강하게 출력됨.
+`high` 이상이면 hooks가 자동 경고합니다.
 
 ---
 
-## 파일 구조
+## 호환
 
-```
-~/.claude/
-├── CLAUDE.md              <- 핵심 규칙 (세션 시작 시 자동 로드)
-├── rules/
-│   └── eazycheck.md       <- 상세 흐름
-├── skills/
-│   └── sim/SKILL.md       <- /sim 시나리오 스킬
-├── agents/
-│   └── eazycheck-gate.md  <- GATE 검증 에이전트
-└── state/
-    ├── patterns.json      <- 실수 패턴 DB (자동 축적)
-    └── routing.json       <- 라우팅 규칙
-```
+- **Claude Code** — hooks + /sim 전체 동작
+- **Antigravity** — hooks + /sim 전체 동작
+- Cursor, Codex CLI — SKILL.md만 동작 (hooks 미지원)
 
 ---
 
-## 호환성
+## 기존 설정 보호
 
-SKILL.md 표준을 따르므로 다음 도구에서 작동합니다:
-- Claude Code
-- OpenAI Codex CLI
-- Gemini CLI
-- Cursor
-- Antigravity
+- CLAUDE.md → 끝에 추가 (덮어쓰지 않음)
+- patterns.json → 기존 유지 (프리셋 별도 저장)
+- settings.json → 기존 hooks 유지하고 추가만
+- sim/SKILL.md → 기존 있으면 건너뜀
 
----
-
-## License
-
-MIT
+MIT License
